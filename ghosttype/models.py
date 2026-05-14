@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -23,22 +23,17 @@ class TextChunk:
 
 
 @dataclass
-class PatternMatch:
-    secret_type: str
-    secret_value: str
-    confidence: str  # "high" or "medium"
-    context: str
-    char_offset: int
-
-
-@dataclass
 class Finding:
     tool: str
-    secret_type: str
+    secret_type: str  # detector name lowercased, e.g. "github", "aws"
     secret_value: str
     file_path: Path
     position: str
-    confidence: str
+    confidence: str  # "verified" or "unverified"
     context: str
     discovered_at: datetime
     severity: str = "medium"
+    verified: bool = False
+    detector_name: str = ""  # raw TruffleHog DetectorName, e.g. "Github"
+    verification_error: str | None = None
+    extra_data: dict[str, Any] = field(default_factory=dict)
