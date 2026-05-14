@@ -1,35 +1,33 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from ghosttype.models import Finding
-from ghosttype.patterns import scan_text
+from ghosttype.models import ConversationRecord, Finding
 from ghosttype.scanners.base import Scanner
+from ghosttype.trufflehog_engine import (
+    DEFAULT_CONTEXT_WINDOW,
+    DEFAULT_TIMEOUT_SECONDS,
+    scan_chunks,
+)
 
 logger = logging.getLogger(__name__)
 
-_HIGH_SEVERITY_TYPES = frozenset({
-    "aws_access_key",
-    "anthropic_key",
-    "openai_token",
-    "github_pat_classic",
-    "github_pat_fine",
-    "github_app_token",
-    "stripe_secret_key",
-    "private_key_pem",
-    "vault_token",
-    "heuristic_aws_secret",
-    "heuristic_supabase_key",
-})
-
 
 class Orchestrator:
+    """Discover conversation files via per-tool scanners, then hand the
+    extracted text to the TruffleHog engine for detection + verification."""
+
     def __init__(
         self,
         scanners: list[Scanner] | None = None,
-        context_window: int = 200,
+        context_window: int = DEFAULT_CONTEXT_WINDOW,
         max_age_days: int | None = None,
+        *,
+        verify: bool = True,
+        only_verified: bool = False,
+        trufflehog_binary: str | None = None,
+        timeout: int = DEFAULT_TIMEOUT_SECONDS,
     ) -> None:
         if scanners is None:
             from ghosttype.scanners import SCANNERS
@@ -38,12 +36,19 @@ class Orchestrator:
             self._scanners = scanners
         self._context_window = context_window
         self._max_age_days = max_age_days
+        self._verify = verify
+        self._only_verified = only_verified
+        self._trufflehog_binary = trufflehog_binary
+        self._timeout = timeout
         self.files_scanned: int = 0
 
     def run(self, tool_filter: str | None = None) -> list[Finding]:
         findings: list[Finding] = []
         seen: set[tuple[str, str, str]] = set()
         self.files_scanned = 0
+        cutoff: datetime | None = None
+        if self._max_age_days is not None:
+            cutoff = datetime.now(timezone.utc) - timedelta(days=self._max_age_days)
 
         for scanner in self._scanners:
             if tool_filter and scanner.name != tool_filter:
@@ -51,51 +56,53 @@ class Orchestrator:
             if not scanner.is_available():
                 continue
             try:
-                records = scanner.discover()
+                records: list[ConversationRecord] = scanner.discover()
             except Exception:
-                logger.warning("Scanner %s failed during discover", scanner.name, exc_info=True)
+                logger.warning(
+                    "Scanner %s failed during discover", scanner.name, exc_info=True
+                )
                 continue
 
-            # Filter records by age if max_age_days is set
-            if self._max_age_days is not None:
-                from datetime import timedelta
-                cutoff = datetime.now(timezone.utc) - timedelta(days=self._max_age_days)
+            if cutoff is not None:
                 records = [
                     r for r in records if r.created_at is None or r.created_at >= cutoff
                 ]
-
+            if not records:
+                continue
             self.files_scanned += len({r.source_path for r in records})
+
+            chunks = []
             for record in records:
                 try:
-                    chunks = scanner.extract_text(record)
+                    chunks.extend(scanner.extract_text(record))
                 except Exception:
                     logger.warning(
-                        "Scanner %s failed extracting %s", scanner.name, record.source_path, exc_info=True
+                        "Scanner %s failed extracting %s",
+                        scanner.name,
+                        record.source_path,
+                        exc_info=True,
                     )
                     continue
-                for chunk in chunks:
-                    for match in scan_text(chunk.text, self._context_window):
-                        dedup_key = (match.secret_value, str(record.source_path), match.secret_type)
-                        if dedup_key in seen:
-                            continue
-                        seen.add(dedup_key)
-                        severity = (
-                            "critical"
-                            if match.secret_type in _HIGH_SEVERITY_TYPES
-                            else "high"
-                            if match.confidence == "high"
-                            else "medium"
-                        )
-                        findings.append(Finding(
-                            tool=scanner.name,
-                            secret_type=match.secret_type,
-                            secret_value=match.secret_value,
-                            file_path=record.source_path,
-                            position=f"{chunk.position}:{match.char_offset}",
-                            confidence=match.confidence,
-                            context=match.context,
-                            discovered_at=datetime.now(timezone.utc),
-                            severity=severity,
-                        ))
-        findings.sort(key=lambda f: (0 if f.confidence == "high" else 1, f.secret_type))
+            if not chunks:
+                continue
+
+            scanner_findings = scan_chunks(
+                scanner.name,
+                chunks,
+                verify=self._verify,
+                only_verified=self._only_verified,
+                binary=self._trufflehog_binary,
+                timeout=self._timeout,
+                context_window=self._context_window,
+            )
+
+            for f in scanner_findings:
+                dedup_key = (f.secret_value, str(f.file_path), f.secret_type)
+                if dedup_key in seen:
+                    continue
+                seen.add(dedup_key)
+                findings.append(f)
+
+        # verified first, then by detector
+        findings.sort(key=lambda f: (0 if f.verified else 1, f.secret_type))
         return findings
