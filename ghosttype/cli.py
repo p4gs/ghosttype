@@ -145,6 +145,7 @@ def doctor(trufflehog_binary: str | None) -> None:
 )
 @click.option("--stats-only", is_flag=True, default=False, help="Print summary statistics only, not full findings table")
 @click.option("--quiet", "-q", is_flag=True, default=False, help="Suppress banner and progress messages (for scripting)")
+@click.option("--verbose", "-v", is_flag=True, default=False, help="Stream per-scanner chunk counts and TruffleHog's own stderr log.")
 @click.option("--max-age-days", default=None, type=int, help="Only scan files modified within the last N days")
 def scan(
     tool: str | None,
@@ -161,9 +162,13 @@ def scan(
     allow_list: str | None,
     stats_only: bool,
     quiet: bool,
+    verbose: bool,
     max_age_days: int | None,
 ) -> None:
     """Scan AI tool conversation files for credentials and secrets via TruffleHog."""
+    if verbose:
+        import logging
+        logging.basicConfig(level=logging.INFO, format="[ghosttype] %(message)s")
     stdout_mode = output == "-"
 
     if not quiet and not stdout_mode:
@@ -194,6 +199,7 @@ def scan(
         only_verified=only_verified,
         trufflehog_binary=resolved_binary,
         timeout=trufflehog_timeout,
+        verbose=verbose,
     )
 
     if not quiet:

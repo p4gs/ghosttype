@@ -28,6 +28,7 @@ class Orchestrator:
         only_verified: bool = False,
         trufflehog_binary: str | None = None,
         timeout: int = DEFAULT_TIMEOUT_SECONDS,
+        verbose: bool = False,
     ) -> None:
         if scanners is None:
             from ghosttype.scanners import SCANNERS
@@ -40,12 +41,15 @@ class Orchestrator:
         self._only_verified = only_verified
         self._trufflehog_binary = trufflehog_binary
         self._timeout = timeout
+        self._verbose = verbose
         self.files_scanned: int = 0
+        self.chunks_scanned: int = 0
 
     def run(self, tool_filter: str | None = None) -> list[Finding]:
         findings: list[Finding] = []
         seen: set[tuple[str, str, str]] = set()
         self.files_scanned = 0
+        self.chunks_scanned = 0
         cutoff: datetime | None = None
         if self._max_age_days is not None:
             cutoff = datetime.now(timezone.utc) - timedelta(days=self._max_age_days)
@@ -84,7 +88,19 @@ class Orchestrator:
                     )
                     continue
             if not chunks:
+                if self._verbose:
+                    logger.info(
+                        "scanner %s discovered %d record(s) but extracted 0 text chunks",
+                        scanner.name, len(records),
+                    )
                 continue
+
+            self.chunks_scanned += len(chunks)
+            if self._verbose:
+                logger.info(
+                    "scanner %s: %d records -> %d chunks; handing to trufflehog",
+                    scanner.name, len(records), len(chunks),
+                )
 
             scanner_findings = scan_chunks(
                 scanner.name,
@@ -94,7 +110,14 @@ class Orchestrator:
                 binary=self._trufflehog_binary,
                 timeout=self._timeout,
                 context_window=self._context_window,
+                verbose=self._verbose,
             )
+
+            if self._verbose:
+                logger.info(
+                    "scanner %s: trufflehog returned %d findings",
+                    scanner.name, len(scanner_findings),
+                )
 
             for f in scanner_findings:
                 dedup_key = (f.secret_value, str(f.file_path), f.secret_type)
