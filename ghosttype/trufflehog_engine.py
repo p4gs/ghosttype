@@ -197,6 +197,7 @@ def scan_chunks(
     context_window: int = DEFAULT_CONTEXT_WINDOW,
     concurrency: int = 10,
     detector_timeout: str = "10s",
+    verbose: bool = False,
 ) -> list[Finding]:
     """Run TruffleHog over the given chunks; return findings.
 
@@ -235,7 +236,14 @@ def scan_chunks(
             concurrency=concurrency,
             detector_timeout=detector_timeout,
         )
-        logger.debug("Invoking trufflehog: %s", " ".join(argv))
+        if verbose:
+            logger.info(
+                "trufflehog: scanning %d chunks from %s (verify=%s, only_verified=%s)",
+                len(index), scanner_name, verify, only_verified,
+            )
+            logger.info("trufflehog argv: %s", " ".join(argv))
+        else:
+            logger.debug("Invoking trufflehog: %s", " ".join(argv))
         try:
             proc = subprocess.run(
                 argv,
@@ -248,6 +256,11 @@ def scan_chunks(
             raise TruffleHogExecutionError(
                 f"trufflehog timed out after {timeout}s on {tmpdir}"
             ) from exc
+        if verbose and proc.stderr:
+            # Surface TruffleHog's own info/error log lines so the user can
+            # watch progress when running with --verbose.
+            for stderr_line in proc.stderr.splitlines():
+                logger.info("trufflehog: %s", stderr_line)
 
         findings: list[Finding] = []
         for raw_line in (proc.stdout or "").splitlines():
