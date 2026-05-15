@@ -55,7 +55,8 @@ def test_write_json_redacts_when_requested(tmp_path, findings):
 def test_write_csv_redacts_by_default(tmp_path, findings):
     out = tmp_path / "findings.csv"
     write_csv(findings, out, redact=True)
-    rows = list(csv.DictReader(out.open()))
+    with out.open(newline="", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
     assert rows[0]["secret_value"] == "***REDACTED***"
     assert rows[0]["tool"] == "claude_code"
     assert rows[0]["verified"] in {"True", "true"}
@@ -67,7 +68,8 @@ def test_write_csv_redacts_by_default(tmp_path, findings):
 def test_write_csv_no_redact_shows_value(tmp_path, findings):
     out = tmp_path / "findings.csv"
     write_csv(findings, out, redact=False)
-    rows = list(csv.DictReader(out.open()))
+    with out.open(newline="", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
     assert rows[0]["secret_value"] == "AKIA00000000000000000"
 
 

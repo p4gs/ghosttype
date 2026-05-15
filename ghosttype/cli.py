@@ -47,7 +47,7 @@ _WORDMARK = r'''
 
 
 @click.group()
-def cli() -> None:
+def cli() -> None:  # pragma: no cover - console-script entrypoint; subcommands tested directly
     """ghosttype - extract credentials from AI tool conversation history (TruffleHog-powered)."""
 
 
