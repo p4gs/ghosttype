@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import shutil
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch, PropertyMock
 
@@ -64,24 +65,25 @@ def synthetic_claude_code_dir(tmp_path) -> Path:
 @pytest.fixture
 def synthetic_cursor_dir(tmp_path) -> Path:
     db_path = tmp_path / "state.vscdb"
-    conn = sqlite3.connect(db_path)
-    conn.execute("CREATE TABLE cursorDiskKV (key TEXT PRIMARY KEY, value TEXT)")
-    conn.execute(
-        "INSERT INTO cursorDiskKV VALUES (?, ?)",
-        (
-            "composerData:integ-uuid",
-            json.dumps(
-                {
-                    "composerId": "integ-uuid",
-                    "text": f"GITHUB_TOKEN={FAKE_GITHUB_PAT}",
-                    "conversationMap": {},
-                    "createdAt": 1704067200000,
-                }
+    # closing() guarantees the handle is released even if execute() raises,
+    # so the fixture never leaks a connection into later tests.
+    with closing(sqlite3.connect(db_path)) as conn:
+        conn.execute("CREATE TABLE cursorDiskKV (key TEXT PRIMARY KEY, value TEXT)")
+        conn.execute(
+            "INSERT INTO cursorDiskKV VALUES (?, ?)",
+            (
+                "composerData:integ-uuid",
+                json.dumps(
+                    {
+                        "composerId": "integ-uuid",
+                        "text": f"GITHUB_TOKEN={FAKE_GITHUB_PAT}",
+                        "conversationMap": {},
+                        "createdAt": 1704067200000,
+                    }
+                ),
             ),
-        ),
-    )
-    conn.commit()
-    conn.close()
+        )
+        conn.commit()
     return tmp_path
 
 

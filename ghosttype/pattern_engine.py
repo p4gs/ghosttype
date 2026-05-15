@@ -62,7 +62,7 @@ def scan_chunks(
     findings: list[Finding] = []
     seen: set[tuple[str, str, str]] = set()
     for chunk in chunks:
-        if not chunk.text:
+        if not chunk.text.strip():
             continue
         record = chunk.record
         for match in scan_text(chunk.text, context_window):

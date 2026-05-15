@@ -21,7 +21,7 @@ import subprocess
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Sequence
 
 from ghosttype.models import ConversationRecord, Finding, TextChunk
 
@@ -108,7 +108,9 @@ def _stage_chunks(
     """
     index: dict[str, tuple[ConversationRecord, TextChunk]] = {}
     for i, chunk in enumerate(chunks):
-        if not chunk.text:
+        # Whitespace-only chunks can't carry a credential; staging them just
+        # makes TruffleHog scan empty temp files.
+        if not chunk.text.strip():
             continue
         rec = chunk.record
         name = (
@@ -337,27 +339,3 @@ def scan_chunks(
         return findings
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
-
-
-def scan_records(
-    scanner_name: str,
-    records: Iterable[ConversationRecord],
-    extract_text,
-    **kwargs,
-) -> list[Finding]:
-    """Convenience wrapper: extract chunks for each record, then call scan_chunks.
-
-    `extract_text` is a callable `record -> list[TextChunk]` (i.e. the scanner's
-    bound method). This lets the orchestrator drive the engine without the
-    engine needing to know about the Scanner ABC.
-    """
-    chunks: list[TextChunk] = []
-    for record in records:
-        try:
-            chunks.extend(extract_text(record))
-        except Exception:  # pragma: no cover - per-record resilience
-            logger.warning(
-                "extract_text failed for %s", record.source_path, exc_info=True
-            )
-            continue
-    return scan_chunks(scanner_name, chunks, **kwargs)
