@@ -130,3 +130,28 @@ def test_report_perms_tightened_when_file_preexists_world_readable(
     c.chmod(0o644)
     write_csv(findings, c, redact=False)
     assert c.stat().st_mode & 0o077 == 0
+
+
+def test_redact_scrubs_secret_from_context_and_extra_data(tmp_path, findings):
+    f = findings[0]
+    f.context = "leak: AKIA00000000000000000 in surrounding text"
+    f.extra_data = {"rotation": "AKIA00000000000000000", "ok": "safe"}
+    out = tmp_path / "findings.json"
+    write_json([f], out, redact=True)
+    blob = out.read_text()
+    assert "AKIA00000000000000000" not in blob
+    data = json.loads(blob)
+    assert data[0]["secret_value"] == "***REDACTED***"
+    assert "***REDACTED***" in data[0]["context"]
+    assert data[0]["extra_data"]["rotation"] == "***REDACTED***"
+    assert data[0]["extra_data"]["ok"] == "safe"
+
+
+def test_redact_false_leaves_context_and_extra_data_intact(tmp_path, findings):
+    f = findings[0]
+    f.context = "raw AKIA00000000000000000 here"
+    out = tmp_path / "findings.json"
+    write_json([f], out, redact=False)
+    data = json.loads(out.read_text())
+    assert data[0]["secret_value"] == "AKIA00000000000000000"
+    assert "AKIA00000000000000000" in data[0]["context"]

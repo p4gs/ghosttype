@@ -261,3 +261,42 @@ def test_scan_stats_only(tmp_path, monkeypatch):
         )
     assert result.exit_code == 1
     assert "By Detector" in result.output or "By Tool" in result.output
+
+
+def test_scan_stdout_empty_findings_is_valid_json_array():
+    import json as _json
+
+    runner = CliRunner()
+    with patch("ghosttype.cli.Orchestrator") as MockOrch:
+        MockOrch.return_value.run.return_value = []
+        MockOrch.return_value.files_scanned = 0
+        result = runner.invoke(
+            cli,
+            ["scan", "--engine", "patterns", "--no-verification",
+             "--output", "-", "--quiet"],
+        )
+    assert result.exit_code == 0
+    assert _json.loads(result.output.strip()) == []
+
+
+def test_scan_stdout_redacts_secret_everywhere(tmp_path):
+    import json as _json
+
+    runner = CliRunner()
+    f = _make_finding(tmp_path)
+    f.context = "key = ghp_xxx appears here"
+    f.extra_data = {"raw": "ghp_xxx", "harmless": "keep"}
+    with patch("ghosttype.cli.Orchestrator") as MockOrch:
+        MockOrch.return_value.run.return_value = [f]
+        MockOrch.return_value.files_scanned = 1
+        result = runner.invoke(
+            cli,
+            ["scan", "--engine", "patterns", "--no-verification",
+             "--redact", "--output", "-", "--quiet"],
+        )
+    assert result.exit_code == 1
+    payload = _json.loads(result.output.strip())
+    assert "ghp_xxx" not in _json.dumps(payload)
+    assert payload[0]["secret_value"] == "***REDACTED***"
+    assert "***REDACTED***" in payload[0]["context"]
+    assert payload[0]["extra_data"]["harmless"] == "keep"

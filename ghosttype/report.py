@@ -43,6 +43,26 @@ _FIELDS = [
 ]
 
 
+_REDACTED = "***REDACTED***"
+
+
+def _scrub(obj, secret: str):
+    """Recursively replace every occurrence of `secret` with the redaction
+    marker. --redact must mask the secret *everywhere it appears*, not only in
+    the secret_value field — the context window (and TruffleHog extra_data)
+    embed the raw value verbatim, so a redacted report was still fully
+    recoverable without this."""
+    if not secret:
+        return obj
+    if isinstance(obj, str):
+        return obj.replace(secret, _REDACTED)
+    if isinstance(obj, dict):
+        return {k: _scrub(v, secret) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_scrub(v, secret) for v in obj]
+    return obj
+
+
 def _finding_to_dict(f: Finding, redact: bool = False) -> dict:
     return {
         "tool": f.tool,
@@ -52,13 +72,15 @@ def _finding_to_dict(f: Finding, redact: bool = False) -> dict:
         "severity": f.severity,
         "verified": f.verified,
         "verification_error": f.verification_error,
-        "secret_value": "***REDACTED***" if redact else f.secret_value,
+        "secret_value": _REDACTED if redact else f.secret_value,
         "file_path": str(f.file_path),
         "position": f.position,
         "confidence": f.confidence,
-        "context": f.context,
+        "context": _scrub(f.context, f.secret_value) if redact else f.context,
         "discovered_at": f.discovered_at.isoformat(),
-        "extra_data": f.extra_data,
+        "extra_data": (
+            _scrub(f.extra_data, f.secret_value) if redact else f.extra_data
+        ),
     }
 
 

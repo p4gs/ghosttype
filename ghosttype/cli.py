@@ -13,7 +13,12 @@ from rich.console import Console
 from rich.table import Table
 
 from ghosttype.models import Finding
-from ghosttype.report import copy_sources as copy_sources_fn, write_csv, write_json
+from ghosttype.report import (
+    _finding_to_dict,
+    copy_sources as copy_sources_fn,
+    write_csv,
+    write_json,
+)
 from ghosttype.scanner import Orchestrator
 from ghosttype.trufflehog_engine import (
     DEFAULT_TIMEOUT_SECONDS,
@@ -290,40 +295,25 @@ def scan(
                 f"({verified_count} VERIFIED, {len(findings) - verified_count} unverified).[/green]"
             )
 
-    if findings:
-        if stdout_mode:
-            data = [
-                {
-                    "tool": f.tool,
-                    "source": f.source,
-                    "secret_type": f.secret_type,
-                    "detector_name": f.detector_name,
-                    "severity": f.severity,
-                    "verified": f.verified,
-                    "verification_error": f.verification_error,
-                    "secret_value": "***REDACTED***" if redact else f.secret_value,
-                    "file_path": str(f.file_path),
-                    "position": f.position,
-                    "confidence": f.confidence,
-                    "context": f.context,
-                    "extra_data": f.extra_data,
-                    "discovered_at": f.discovered_at.isoformat(),
-                }
-                for f in findings
-            ]
-            sys.stdout.write(json.dumps(data, indent=2))
-            sys.stdout.write("\n")
-        else:
-            if fmt in ("json", "both"):
-                write_json(findings, out_dir / "findings.json", redact=redact)
-            if fmt in ("csv", "both"):
-                write_csv(findings, out_dir / "findings.csv", redact=redact)
-            if copy_sources:
-                copy_sources_fn(findings, out_dir / "sources")
-                if not quiet:
-                    console.print(f"[dim]Source files copied to {out_dir / 'sources'}[/dim]")
+    if stdout_mode:
+        # Always emit valid JSON — `[]` on zero findings, not an empty
+        # string — so `ghosttype scan --output - | jq` never breaks.
+        # Single serializer (report._finding_to_dict) so stdout, JSON file
+        # and CSV share one schema AND one redaction policy.
+        data = [_finding_to_dict(f, redact=redact) for f in findings]
+        sys.stdout.write(json.dumps(data, indent=2))
+        sys.stdout.write("\n")
+    elif findings:
+        if fmt in ("json", "both"):
+            write_json(findings, out_dir / "findings.json", redact=redact)
+        if fmt in ("csv", "both"):
+            write_csv(findings, out_dir / "findings.csv", redact=redact)
+        if copy_sources:
+            copy_sources_fn(findings, out_dir / "sources")
+            if not quiet:
+                console.print(f"[dim]Source files copied to {out_dir / 'sources'}[/dim]")
     else:
-        if not quiet and not stdout_mode:
+        if not quiet:
             console.print("[dim]No output files written.[/dim]")
 
     if not stdout_mode:
