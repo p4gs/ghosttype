@@ -128,15 +128,32 @@ jobs:
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@78ed0c7291d93e40c51b085850dc669a4c3ab73b # v3
 
-      # Semgrep second-opinion SAST. No blanket suppression and no
-      # nosemgrep-all: if a rule flags the legitimate subprocess/Keychain
-      # behavior, it surfaces and is triaged at code level by a human.
-      # defends: same-vendor SAST blind spots
-      - name: Semgrep
+      # Opengrep (OSS LGPL-2.1 fork of the Semgrep engine) second-opinion SAST.
+      # No blanket suppression: the ONE documented exception is the forensic
+      # AES-CBC-interop true-positive in chatgpt.py, suppressed inline with a
+      # `# nosemgrep: <rule-id>` annotation that Opengrep honors natively
+      # (its NOSEM regex accepts the `nosemgrep:` token, same engine path).
+      # `--error` is OFF by default — a bare `opengrep scan` exits 0 even
+      # with ERROR findings, so the hard gate MUST pass --severity ERROR
+      # --error. Install is the version-PINNED, Cosign-signature-verified
+      # release (script fetched from the immutable v1.21.0 tag, NOT main —
+      # same Baseline-1 discipline as the TruffleHog install).
+      # defends: same-vendor SAST blind spots; remote-script-takeover
+      - name: Opengrep SAST (pinned + Cosign-verified)
         run: |
           set -euo pipefail
-          pip install semgrep==1.97.0
-          semgrep --config p/python --error --metrics=off
+          curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/v1.21.0/install.sh -o /tmp/opengrep-install.sh
+          sh /tmp/opengrep-install.sh -v v1.21.0 --verify-signatures
+          export PATH="$HOME/.opengrep/cli/latest:$PATH"
+          opengrep --version
+          opengrep scan --config p/python --severity ERROR --error \
+            --sarif-output=opengrep.sarif .
+
+      - name: Upload Opengrep SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@78ed0c7291d93e40c51b085850dc669a4c3ab73b # v3
+        with:
+          sarif_file: opengrep.sarif
 
   sca:
     name: Dependency audit (SCA)
