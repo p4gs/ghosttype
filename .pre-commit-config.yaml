@@ -7,11 +7,16 @@
 #
 # Install once locally with:  pre-commit install
 repos:
-  - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.30.1
+  # TruffleHog is the cred scanner: far broader detector coverage than
+  # gitleaks AND it actively verifies findings (live/unknown/unverified)
+  # so real, exploitable secrets are prioritized over noise. Same engine
+  # ghosttype itself uses. Default hook entry scans the working changes
+  # with --results=verified --fail.
+  - repo: https://github.com/trufflesecurity/trufflehog
+    rev: v3.95.3
     hooks:
       # defends: committed-secret leak before it reaches the remote
-      - id: gitleaks
+      - id: trufflehog
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0

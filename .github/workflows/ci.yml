@@ -139,19 +139,29 @@ jobs:
       # release (script fetched from the immutable v1.21.0 tag, NOT main —
       # same Baseline-1 discipline as the TruffleHog install).
       # defends: same-vendor SAST blind spots; remote-script-takeover
+      # cosign is NOT preinstalled on ubuntu-latest; the Opengrep installer's
+      # --verify-signatures needs it. Pinned official installer action.
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@d58896d6a1865668819e1d91763c7751a165e159 # v3.9.2
+
       - name: Opengrep SAST (pinned + Cosign-verified)
+        env:
+          # Passed via env, NOT interpolated into the script: an attacker-
+          # controlled PR base ref must not be able to inject shell. This is
+          # the fix for zizmor's template-injection finding.
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
           curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/v1.21.0/install.sh -o /tmp/opengrep-install.sh
-          sh /tmp/opengrep-install.sh -v v1.21.0 --verify-signatures
+          # install.sh uses `set -o pipefail` (a bashism); run it with bash,
+          # NOT sh — ubuntu's /bin/sh is dash and aborts on pipefail.
+          bash /tmp/opengrep-install.sh -v v1.21.0 --verify-signatures
           export PATH="$HOME/.opengrep/cli/latest:$PATH"
           opengrep --version
-          # Scale: on a pull_request scan ONLY code changed vs the base
-          # (--baseline-commit); on push scan the full tree. The shell
-          # expansion is empty on push, so this is one command for both.
-          base='${{ github.event.pull_request.base.sha }}'
+          # Scale: on a pull_request, scan ONLY code changed vs the base
+          # (--baseline-commit); on push BASE_SHA is empty -> full scan.
           opengrep scan --config p/python --severity ERROR --error \
-            ${base:+--baseline-commit "$base"} \
+            ${BASE_SHA:+--baseline-commit "$BASE_SHA"} \
             --jobs "$(nproc)" --sarif-output=opengrep.sarif .
 
       - name: Upload Opengrep SARIF
@@ -185,10 +195,20 @@ jobs:
       # PyPA + ecosystem advisories) — wider than pip-audit's PyPA-only feed.
       # Two complementary SCA sources, not redundant.
       # defends: known-CVE dependency shipped to users (advisory breadth)
-      - name: osv-scanner (OSV.dev)
-        uses: google/osv-scanner-action@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
-        with:
-          scan-args: "--recursive --skip-git --lockfile=requirements.lock ./"
+      # google/osv-scanner-action is a REUSABLE WORKFLOW, not a composite
+      # action — `uses:` in a step fails ("no top-level runs:"). Run the
+      # pinned, checksum-verified osv-scanner binary instead (fewer deps).
+      - name: osv-scanner (OSV.dev, pinned + checksum-verified)
+        run: |
+          set -euo pipefail
+          v=v2.3.8
+          base="https://github.com/google/osv-scanner/releases/download/${v}"
+          curl -fsSL -O "${base}/osv-scanner_linux_amd64"
+          curl -fsSL -O "${base}/osv-scanner_SHA256SUMS"
+          # SHA256SUMS lists every platform asset; we fetched only one.
+          sha256sum --ignore-missing -c osv-scanner_SHA256SUMS
+          chmod +x osv-scanner_linux_amd64
+          ./osv-scanner_linux_amd64 --recursive --skip-git --lockfile=requirements.lock ./
 
       # Gate on vulnerabilities in the runtime/build closure. --strict makes
       # any audit warning (e.g. a package with no known-vuln data) fail too.
