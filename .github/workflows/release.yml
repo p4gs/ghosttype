@@ -113,7 +113,9 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: "3.11"
+          # Matches the Python requirements-citools.lock was compiled on
+          # (--require-hashes is Python-version sensitive — see ci.yml sca job).
+          python-version: "3.13"
 
       # Install the runtime closure so the environment SBOM reflects exactly
       # what ships, then generate a CycloneDX SBOM from that environment.

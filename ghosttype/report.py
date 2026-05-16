@@ -10,15 +10,20 @@ from pathlib import Path
 from ghosttype.models import Finding
 
 # Report files carry plaintext discovered credentials by design (the authorized
-# pentest/DLP deliverable; --redact masks them when not needed). They are still
-# written owner-only so the at-rest blast radius is the operator's account, not
-# the filesystem's default umask. Created restricted via the opener, and
-# re-restricted in case a prior run left a wider-mode file in place.
+# pentest/DLP deliverable; --redact masks them when not needed). They are
+# written owner-only so the at-rest blast radius is the operator's account,
+# not the filesystem's default umask. The fd is restricted with fchmod BEFORE
+# any bytes are written — this is race-free for both the new-file case (created
+# 0600) and the prior-run-left-a-0644-file case (truncated empty, then chmod'd
+# to 0600 while still empty, then the secret bytes are written). No
+# write-then-chmod TOCTOU window where secret content sits world-readable.
 _OWNER_ONLY = 0o600
 
 
 def _secure_opener(path: str, flags: int) -> int:
-    return os.open(path, flags, _OWNER_ONLY)
+    fd = os.open(path, flags, _OWNER_ONLY)
+    os.fchmod(fd, _OWNER_ONLY)
+    return fd
 
 _FIELDS = [
     "tool",

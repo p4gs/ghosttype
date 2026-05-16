@@ -135,10 +135,10 @@ from code; faking it would be dishonest).
 
 | # | Tool | Rule | Location | Disposition |
 |---|------|------|----------|-------------|
-| 4,3,2 | Scorecard | PinnedDependenciesID | ci.yml:80,224,259 | **Fixed in code** — dropped unpinned `pip install --upgrade pip`; pip-audit/zizmor installed via `--require-hashes -r requirements-citools.lock` |
-| 6,5 | Scorecard | PinnedDependenciesID | release.yml:49,125 | **Fixed in code** — dropped `--upgrade pip`; cyclonedx-bom installed via `--require-hashes -r requirements-citools.lock` |
+| 4,3,2 | Scorecard | PinnedDependenciesID | ci.yml:80,224,259 | **Fixed in code — runner-confirmed `fixed`.** Dropped unpinned `pip install --upgrade pip`; pip-audit/zizmor installed via `--require-hashes -r requirements-citools.lock` (lock + consuming jobs pinned to Python 3.13 for hash determinism) |
+| 6,5 | Scorecard | PinnedDependenciesID | release.yml:49,125 | **Fixed in code — runner-confirmed `fixed`.** Dropped `--upgrade pip`; cyclonedx-bom installed via `--require-hashes -r requirements-citools.lock` |
 | 13 | Opengrep | crypto-mode-without-authentication | chatgpt.py:96 | **Documented dismissal (needs your approval)** — see B-1 |
-| 12 | CodeQL | py/clear-text-storage-sensitive-data | report.py:52 | **Code-hardened + documented dismissal** — see B-2 |
+| 14 (was 12) | CodeQL | py/clear-text-storage-sensitive-data | report.py (~55) | **Code-hardened + documented dismissal (needs approval)** — see B-2. CodeQL re-keyed #12→#14 when the write sink moved (now race-free `_secure_opener`) |
 | 11 | CodeQL | py/clear-text-logging-sensitive-data | cli.py:314 | **Documented dismissal (needs your approval)** — see B-3 |
 | 1 | Scorecard | BranchProtectionID | main | **Repo-admin** — Action #1 (branch protection / ruleset) |
 | 7 | Scorecard | CIIBestPracticesID | — | **External** — Action #5 (register bestpractices.dev) |
@@ -151,35 +151,61 @@ from code; faking it would be dishonest).
 These are real code patterns, but the flagged behavior is the authorized
 tool's core function or an immutable third-party-format interop constraint
 the scanner cannot model. Per the zero-suppression rule, each dismissal is
-**evidence-based, documented, and (for B-2) paired with a real code fix** —
-not a bare "safe in practice" hand-wave. Inline annotations are retained.
+**evidence-based, documented, and paired with a real residual-risk code
+fix** — not a bare "safe in practice" hand-wave. Inline annotations are
+retained, and this doc re-surfaces the exception if the code path changes.
+
+**Default posture (applies to B-2 and B-3):** ghosttype emits the raw
+`secret_value` **by default**; `--redact` is opt-in. That default is
+deliberate and justified — ghosttype runs under explicit written
+authorization (THREAT-MODEL.md; "Authorized use only"), and the licensed
+pentest/DLP operator *needs* the plaintext to locate and rotate the exposed
+credential; a redacted-by-default forensic scanner cannot do its job. The
+**named compensating control** for the raw-emission path is owner-only
+(`0600`) at-rest permissions on the report files (shipped in code, below);
+`--redact` is the documented control for non-authorized / shareable
+contexts, not a standalone rationale for the raw path.
 
 **B-1 — alert #13, `chatgpt.py:96`, AES-128-CBC (Opengrep):**
-ghosttype is a *read-only forensic reader*. ChatGPT Desktop wrote its
-`.data` files with AES-128-CBC via Electron `safeStorage` and a
-Keychain-derived key. ghosttype cannot author a message-authentication tag
-over ciphertext it did not produce, and switching to an AEAD mode would make
-real ChatGPT data permanently unreadable — defeating the tool's purpose.
-Opengrep cannot model "this is interop with a third party's immutable
-on-disk format." The inline `# nosemgrep:` annotation and documenting
-comment remain at `chatgpt.py:96`. Authorized-use-only (THREAT-MODEL.md).
+*Named external format:* Chromium/Electron **OSCrypt** (the `"v10"`/`"v11"`
+prefix scheme used by the ChatGPT desktop app). Its on-disk encryption is
+**fixed by Chromium's design**: AES-128-CBC, key = `PBKDF2-HMAC-SHA1(pw,
+"saltysalt", 1003, 16)`, and a **fixed 16-byte space IV** — none of these are
+chosen by ghosttype. *Decrypt-only, not produce-new:* the flagged line is a
+`decryptor()` path; ghosttype never encrypts and never emits CBC ciphertext,
+so there is no IV-reuse exposure of *our* making (the static IV is a property
+of the external format we must match byte-for-byte or decryption fails).
+*No oracle:* this is a one-shot local decrypt of files the operator already
+owns; decrypted output goes into the operator's local report, never back to
+an attacker, and a malformed/bit-flipped file simply fails PKCS7 unpad
+(caught, debug-logged, returns `None`) — none of the repeated
+attacker-chosen-ciphertext + pad-validity-feedback conditions for a padding
+oracle exist. *No compensating MAC is possible:* ghosttype cannot author an
+authentication tag over ciphertext a third party wrote; forensic integrity
+is provided out-of-band by the report + `--copy-sources` chain-of-custody.
+An AEAD mode would simply fail to read real ChatGPT data. Opengrep cannot
+model "match an external immutable format" vs "choose a weak mode." Inline
+`# nosemgrep:` + the explanatory comment remain at `chatgpt.py:96`.
 
-**B-2 — alert #12, `report.py:52`, clear-text storage (CodeQL):**
-ghosttype is an authorized-use-only forensic credential scanner. The
-discovered `secret_value` *is* the pentest/DLP report deliverable — the
-licensed operator needs the plaintext to locate and rotate the exposed
-credential. A credential scanner's report inherently contains credentials;
-CodeQL cannot model this authorized intent. **Real residual-risk fix shipped
-in code:** `report.py` now writes both JSON and CSV reports owner-only
-(`0600`, via `_secure_opener` + re-`chmod`), and `--redact` masks values
-when not needed. Removing the value would neuter the tool's core function.
+**B-2 — alert #14 (was #12), `report.py`, clear-text storage (CodeQL):**
+The discovered `secret_value` *is* the pentest/DLP report deliverable (see
+*Default posture* above). A credential scanner's report inherently contains
+credentials; CodeQL cannot model this authorized intent. **Real residual-risk
+fix shipped in code:** `report.py` writes both JSON and CSV reports
+owner-only (`0600`) via `_secure_opener`, which `fchmod`s the fd to `0600`
+*before any bytes are written* — race-free for both the new-file and
+prior-run-left-a-0644-file cases (no write-then-chmod TOCTOU window where
+secret content sits world-readable). Removing the value would neuter the
+tool's core function.
 
 **B-3 — alert #11, `cli.py:314`, clear-text logging (CodeQL):**
-Same authorized deliverable, reached via the documented `--output -` stdout
-path (pipelining, e.g. `| jq`). The plaintext credential is the actionable
-output; `--redact` masks it when not required. CodeQL's clear-text-logging
-sink cannot model authorized forensic output. Documented evidence-based
-carve-out, not suppression of an exploitable defect.
+The same authorized deliverable, reached via the documented `--output -`
+stdout path (pipelining, e.g. `| jq`). CodeQL's clear-text-logging sink
+cannot model authorized forensic output. The default-posture justification
+and the `--redact` control framing above apply identically. Documented
+evidence-based carve-out, not suppression of an exploitable defect. (Note:
+the stdout path is operator-chosen and transient; the `0600` at-rest control
+applies to the file-output path, which is the default.)
 
 > **Action required (you / repo-admin):** dismissing alerts is an external
 > GitHub write, deliberately gated. Approve, then either dismiss in the
@@ -189,9 +215,9 @@ carve-out, not suppression of an exploitable defect.
 > gh api -X PATCH repos/p4gs/ghosttype/code-scanning/alerts/13 \
 >   -f state=dismissed -f dismissed_reason="won't fix" \
 >   -f dismissed_comment="By-design forensic interop; full rationale: SSCS-USER-ACTIONS.md B-1"
-> gh api -X PATCH repos/p4gs/ghosttype/code-scanning/alerts/12 \
+> gh api -X PATCH repos/p4gs/ghosttype/code-scanning/alerts/14 \
 >   -f state=dismissed -f dismissed_reason="won't fix" \
->   -f dismissed_comment="By-design authorized deliverable; report files now 0600; full rationale: B-2"
+>   -f dismissed_comment="By-design authorized deliverable; report files now race-free 0600; full rationale: B-2"
 > gh api -X PATCH repos/p4gs/ghosttype/code-scanning/alerts/11 \
 >   -f state=dismissed -f dismissed_reason="won't fix" \
 >   -f dismissed_comment="Same authorized deliverable via --output -; full rationale: B-3"
@@ -219,3 +245,23 @@ dishonest. Mapped to the actions above plus:
 - **#10 MaintainedID** ("repository created in last 90 days") → **no action
   possible or needed**: purely time-based. It clears automatically as the
   project ages and accrues commit history; nothing in code influences it.
+
+Ownership: every Class-C item is an *owned, tracked* line — Actions #1–#7
+in this file (checkbox-tracked, owner = repo-admin), not merely prose. They
+are "done" only when the action is applied; until then they correctly
+remain open on the dashboard rather than being faked.
+
+## Residual follow-ups (advisor-surfaced, not silently dropped)
+
+- **Hashed-lock currency.** `requirements-citools.lock` (like the existing
+  `requirements.lock`) is hash-pinned and will rot into unpatched-dep risk
+  if never regenerated. Dependabot's `pip` ecosystem (`.github/dependabot.yml`,
+  dir `/`) tracks the `*.in`; regenerate the lock with
+  `pip-compile --generate-hashes --allow-unsafe` **under Python 3.13** (the
+  version the consuming CI jobs now pin — required for hash determinism).
+  Wiring fully-automated lock regeneration is a reasonable future
+  enhancement, deliberately not faked as done here.
+- **Dismissal exceptions re-surface on change.** B-1..B-3 live in this
+  in-repo durable doc *and* (once approved) in the code-scanning platform,
+  so the exception is re-reviewed if the flagged code path materially
+  changes — not a fire-and-forget suppression.

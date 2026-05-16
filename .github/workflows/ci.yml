@@ -192,7 +192,11 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: "3.11"
+          # Must match the Python that compiled requirements-citools.lock:
+          # --require-hashes is Python-version sensitive (e.g. `referencing`
+          # pulls `typing-extensions` only on python_version < "3.13", so a
+          # 3.13-resolved lock is missing it on 3.11 and the install fails).
+          python-version: "3.13"
 
       # OSV.dev breadth: osv-scanner queries the OSV database (CVE + GHSA +
       # PyPA + ecosystem advisories) — wider than pip-audit's PyPA-only feed.
@@ -257,7 +261,9 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: "3.11"
+          # Matches the Python requirements-citools.lock was compiled on
+          # (--require-hashes is Python-version sensitive — see sca job).
+          python-version: "3.13"
       - name: zizmor (pinned)
         run: |
           set -euo pipefail
