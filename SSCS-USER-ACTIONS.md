@@ -98,11 +98,10 @@ defending the known-CVE-dependency-lingering class.
 The README badges are real OpenSSF/tooling decorators — none are fabricated.
 Two need a one-time external step before they render correctly:
 
-- **OpenSSF Scorecard badge** — set `publish_results: true` in
-  `.github/workflows/scorecard.yml` (currently `false` because this is a
-  fork; publishing pushes results to the public OpenSSF API the badge
-  reads). The badge URL is already correct; it just shows no data until
-  results are published.
+- **OpenSSF Scorecard badge** — ✅ DONE: `publish_results: true` is now
+  set in `.github/workflows/scorecard.yml` (owner-approved). The badge
+  populates with the real score after the next scheduled/push Scorecard
+  run publishes to the public OpenSSF API (allow one or two runs).
 - **OpenSSF Best Practices badge** — register the project at
   `https://www.bestpractices.dev` → you get a numeric project ID → replace
   the `BESTPRACTICES_ID` placeholder in `README.md` (two occurrences).
