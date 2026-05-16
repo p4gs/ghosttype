@@ -77,11 +77,14 @@ jobs:
     needs: [build]
     # SLSA L3 verifies the reusable-workflow ref identity, so this is pinned
     # to the @v2.1.0 TAG, not a SHA — SHA-pinning breaks SLSA provenance.
+    # zizmor's unpinned-uses cannot model this constraint; narrow, documented,
+    # evidence-based ignore (the slsa-github-generator REQUIRES a tag ref —
+    # this is the one sanctioned exception, not a blanket suppression).
     permissions:
       id-token: write
       contents: write
       actions: read
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0 # zizmor: ignore[unpinned-uses]
     with:
       base64-subjects: ${{ needs.build.outputs.hashes }}
       upload-assets: true
