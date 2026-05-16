@@ -90,3 +90,31 @@ defending the known-CVE-dependency-lingering class.
 - ✅ Enable **Dependabot security updates**.
 - (Optional) Enable **Dependabot version updates** — already configured by
   `.github/dependabot.yml`; this toggle just confirms it is active.
+
+---
+
+## [ ] 5. Activate the README SSCS badges (registration-gated)
+
+The README badges are real OpenSSF/tooling decorators — none are fabricated.
+Two need a one-time external step before they render correctly:
+
+- **OpenSSF Scorecard badge** — set `publish_results: true` in
+  `.github/workflows/scorecard.yml` (currently `false` because this is a
+  fork; publishing pushes results to the public OpenSSF API the badge
+  reads). The badge URL is already correct; it just shows no data until
+  results are published.
+- **OpenSSF Best Practices badge** — register the project at
+  `https://www.bestpractices.dev` → you get a numeric project ID → replace
+  the `BESTPRACTICES_ID` placeholder in `README.md` (two occurrences).
+  Not pre-filled with a guessed ID by design.
+
+## [ ] 6. Enable the GitHub **Dependency Graph** (for the dependency-review CI job)
+
+`Settings → Code security → Dependency graph`. The `dependency-review` CI
+job (PR gate) no-ops without it.
+
+## [ ] 7. (After first release) add the SLSA badge
+
+Once `release.yml` has produced a provenanced release, add the slsa.dev
+Build-Level badge to `README.md`. Not added now — asserting a SLSA level
+with no provenanced artifact would be a false claim.
