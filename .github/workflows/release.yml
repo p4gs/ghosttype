@@ -27,7 +27,20 @@ jobs:
       - name: Harden runner
         uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2
         with:
-          egress-policy: audit
+          egress-policy: block
+          # Build job: checkout + setup-python + hashed pip install + build +
+          # upload-artifact. DORMANT workflow (tag-only) — allowlist reasoned
+          # from step network ops, not a live audit run; see SSCS-USER-ACTIONS.
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            codeload.github.com:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            results-receiver.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+            pypi.org:443
+            files.pythonhosted.org:443
 
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -103,7 +116,21 @@ jobs:
       - name: Harden runner
         uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2
         with:
-          egress-policy: audit
+          egress-policy: block
+          # SBOM job: + gh release upload (uploads.github.com). DORMANT
+          # workflow — allowlist reasoned, not live-audited; see
+          # SSCS-USER-ACTIONS.md.
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            codeload.github.com:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            uploads.github.com:443
+            results-receiver.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+            pypi.org:443
+            files.pythonhosted.org:443
 
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -165,7 +192,15 @@ jobs:
   #     - name: Harden runner
   #       uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2
   #       with:
-  #         egress-policy: audit
+  #         egress-policy: block
+  #         allowed-endpoints: >
+  #           github.com:443
+  #           api.github.com:443
+  #           release-assets.githubusercontent.com:443
+  #           results-receiver.actions.githubusercontent.com:443
+  #           *.blob.core.windows.net:443
+  #           upload.pypi.org:443
+  #           pypi.org:443
   #     - name: Download dist
   #       uses: actions/download-artifact@<PIN-WHEN-ENABLING> # v4
   #       with:

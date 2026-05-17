@@ -251,6 +251,35 @@ in this file (checkbox-tracked, owner = repo-admin), not merely prose. They
 are "done" only when the action is applied; until then they correctly
 remain open on the dashboard rather than being faked.
 
+## Egress policy — `block` everywhere (PR #8 review item #7)
+
+Every `step-security/harden-runner` step in `ci.yml`, `scorecard.yml`, and
+`release.yml` runs `egress-policy: block` with an explicit per-job
+`allowed-endpoints` allowlist. `block` actually prevents an unlisted
+outbound connection; the previous `audit` only *observed* it (the inline
+comment that claimed `audit` "defends post-install data exfiltration" was an
+overclaim — corrected). Allowlists for the live CI jobs (`test`, `codeql`,
+`sca`, `workflow-security`, `scorecard`) were **derived empirically from
+real harden-runner audit runs**, not guessed.
+
+**`test` job self-scan is detection-only by design.** The repo-self secret
+scan previously ran `trufflehog filesystem . --results=verified --fail`,
+which depends on TruffleHog's live verifier reaching an open set of
+credential-provider hosts (≈750 distinct static endpoints, verified by
+extracting them from TruffleHog v3.94.3's own detector source, plus ≈60
+parametric/custom-domain detectors that cannot be statically pinned at
+all). That is fundamentally incompatible with an egress-blocked runner.
+Rather than (a) keep `audit` and overclaim, or (b) inline a ~750-host,
+version-fragile, still-incomplete allowlist, the self-scan now runs
+`trufflehog filesystem ghosttype/ --no-verification --no-update --fail
+--exclude-paths=.github/th-selfscan-exclude.txt` — a **detection-only**
+gate scoped to the shipped package, skipping the files that embed
+credential *shapes* by design (the pattern catalog, `__pycache__`).
+Verified locally: clean on current shipped code, and a planted structural
+secret in shipped code still fails the build (not security theater).
+**End-user runtime verification is unaffected** — this governs CI's own
+self-scan only; `ghosttype` still verifies for users by default.
+
 ## Residual follow-ups (advisor-surfaced, not silently dropped)
 
 - **Hashed-lock currency.** `requirements-citools.lock` (like the existing
@@ -265,3 +294,16 @@ remain open on the dashboard rather than being faked.
   in-repo durable doc *and* (once approved) in the code-scanning platform,
   so the exception is re-reviewed if the flagged code path materially
   changes — not a fire-and-forget suppression.
+- **`release.yml` egress allowlist is reasoned, not live-audited.**
+  `release.yml` is dormant (runs only on a pushed `v*` tag), so its
+  `build`/`sbom` allowlists were derived from each step's network
+  operations rather than a captured audit run. First real tagged release:
+  watch the harden-runner insights and tighten/extend the two allowlists
+  if anything essential was blocked. The live CI allowlists (`ci.yml`,
+  `scorecard.yml`) carry no such caveat — they are audit-derived.
+- **Egress allowlists are version/infra-coupled.** GitHub Actions backing
+  hosts (artifact/cache `*.blob.core.windows.net`, setup-python asset
+  hosts) and tool registries drift. A newly-blocked *essential* endpoint
+  surfaces as a harden-runner block annotation (non-destructive, easy to
+  add); review the insights link on the first maintainer-run CI and adjust
+  if needed.
