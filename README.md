@@ -1,8 +1,8 @@
 # ghosttype
 
-[![CI](https://github.com/p4gs/ghosttype/actions/workflows/ci.yml/badge.svg)](https://github.com/p4gs/ghosttype/actions/workflows/ci.yml)
-[![coverage ≥95%](https://img.shields.io/badge/coverage-%E2%89%A595%25-brightgreen)](https://github.com/p4gs/ghosttype/actions/workflows/ci.yml)
-[![Scorecard supply-chain](https://github.com/p4gs/ghosttype/actions/workflows/scorecard.yml/badge.svg)](https://github.com/p4gs/ghosttype/actions/workflows/scorecard.yml)
+[![CI](https://github.com/xFreed0m/ghosttype/actions/workflows/ci.yml/badge.svg)](https://github.com/xFreed0m/ghosttype/actions/workflows/ci.yml)
+[![coverage ≥95%](https://img.shields.io/badge/coverage-%E2%89%A595%25-brightgreen)](https://github.com/xFreed0m/ghosttype/actions/workflows/ci.yml)
+[![Scorecard supply-chain](https://github.com/xFreed0m/ghosttype/actions/workflows/scorecard.yml/badge.svg)](https://github.com/xFreed0m/ghosttype/actions/workflows/scorecard.yml)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/BESTPRACTICES_ID/badge)](https://www.bestpractices.dev/projects/BESTPRACTICES_ID)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
 

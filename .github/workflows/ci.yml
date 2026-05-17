@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, trufflehog-integration]
+    branches: [main]
   pull_request:
 
 # Least privilege by default for every job in this workflow.
@@ -138,9 +138,11 @@ jobs:
       # (its NOSEM regex accepts the `nosemgrep:` token, same engine path).
       # `--error` is OFF by default — a bare `opengrep scan` exits 0 even
       # with ERROR findings, so the hard gate MUST pass --severity ERROR
-      # --error. Install is the version-PINNED, Cosign-signature-verified
-      # release (script fetched from the immutable v1.21.0 tag, NOT main —
-      # same Baseline-1 discipline as the TruffleHog install).
+      # --error. The install.sh bootstrap is fetched from an IMMUTABLE commit
+      # SHA (a git tag is force-pushable) and sha256-verified BEFORE it runs;
+      # --verify-signatures (Cosign) then covers the downloaded binary. Both
+      # the script and the binary are integrity-checked — same Baseline-1
+      # discipline as the TruffleHog install.
       # defends: same-vendor SAST blind spots; remote-script-takeover
       # cosign is NOT preinstalled on ubuntu-latest; the Opengrep installer's
       # --verify-signatures needs it. Pinned official installer action.
@@ -153,9 +155,19 @@ jobs:
           # controlled PR base ref must not be able to inject shell. This is
           # the fix for zizmor's template-injection finding.
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          # Immutable commit for opengrep v1.21.0. raw.githubusercontent.com
+          # serves whatever a ref currently points at, and a tag can be
+          # force-pushed — so the script is pinned by commit SHA AND verified
+          # against a recorded digest before execution. Bump both together;
+          # recompute the digest from the new commit's install.sh.
+          OPENGREP_COMMIT: 146ca6b12422e5f2718c6e506badfb035c9f49aa
+          OPENGREP_INSTALL_SHA256: d00ea682170261f09d483496d7cc9864ce58f8e527f1e134a71351b23cd1f9ed
         run: |
           set -euo pipefail
-          curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/v1.21.0/install.sh -o /tmp/opengrep-install.sh
+          curl -fsSL "https://raw.githubusercontent.com/opengrep/opengrep/${OPENGREP_COMMIT}/install.sh" -o /tmp/opengrep-install.sh
+          # Integrity-gate the bootstrap script itself BEFORE running it.
+          # --verify-signatures (below) only covers the downloaded binary.
+          echo "${OPENGREP_INSTALL_SHA256}  /tmp/opengrep-install.sh" | sha256sum -c -
           # install.sh uses `set -o pipefail` (a bashism); run it with bash,
           # NOT sh — ubuntu's /bin/sh is dash and aborts on pipefail.
           bash /tmp/opengrep-install.sh -v v1.21.0 --verify-signatures

@@ -48,10 +48,10 @@ ghosttype/
 
 ## Don't
 
-- Don't add regex patterns to ghosttype. The engine is TruffleHog. If verification matters, the detector belongs in TruffleHog upstream.
-- Don't silently fall back to regex-only if TruffleHog is missing. Fail loudly with the install URL.
-- Don't ship any code that hits a network endpoint other than via the TruffleHog subprocess. ghosttype itself does no network I/O.
+- Don't casually expand the in-tree pattern catalog. ghosttype is **dual-engine by design (v0.4.0)**: TruffleHog is the verification source of truth and primary detector; the in-tree regex/heuristic engine is a deliberate *offline-capable peer* (`--engine patterns`) and a safety net for loose-context signals (`password=`, `secret_key=`) that TruffleHog's structural detectors miss. Add a pattern only with a documented rationale for why TruffleHog can't cover it; if verification matters, prefer upstreaming a detector to TruffleHog.
+- Don't make the patterns-only fallback *silent*. With the default `--engine both`, a missing TruffleHog binary falls back to the pattern engine — but the CLI MUST print a visible warning (that mode does no verification). `--engine trufflehog` still hard-fails loudly with the install URL; never degrade it silently.
+- Don't ship any code that hits a network endpoint other than via the TruffleHog subprocess. ghosttype itself does no network I/O; the pattern engine is fully offline.
 
 ## Current state
 
-v0.3.0. 76 tests. Run `ghosttype doctor` to confirm TruffleHog is wired up. Run `ghosttype scan --no-verification --output -` for a fast offline sanity check.
+v0.4.0 (dual-engine: TruffleHog + in-tree patterns). 212 tests, ~97% coverage (95% floor, never 100%). Run `ghosttype doctor` to confirm TruffleHog is wired up. Run `ghosttype scan --no-verification --output -` for a fast offline sanity check, or `ghosttype scan --engine patterns --output -` for a no-binary offline run.

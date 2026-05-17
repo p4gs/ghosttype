@@ -13,7 +13,12 @@ repos:
   # ghosttype itself uses. Default hook entry scans the working changes
   # with --results=verified --fail.
   - repo: https://github.com/trufflesecurity/trufflehog
-    rev: v3.95.3
+    # Commit SHA, NOT a tag: a tag is mutable (can be force-pushed) and the
+    # PR applies SHA-pinning discipline everywhere. This SHA IS v3.94.3 —
+    # the exact version CI installs + sha256-verifies (ci.yml
+    # TRUFFLEHOG_VERSION) — so local pre-commit and CI run the same engine.
+    # Bump in lockstep with ci.yml's TRUFFLEHOG_VERSION.
+    rev: 47e7b7cd74f578e1e3145d48f669f22fd1330ca6  # v3.94.3
     hooks:
       # defends: committed-secret leak before it reaches the remote
       - id: trufflehog
